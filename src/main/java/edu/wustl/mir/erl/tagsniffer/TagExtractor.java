@@ -105,10 +105,18 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
             System.out.println("Skipping file: " + f.getAbsoluteFile().toString());
             return;
         }
-        DicomInputStream dis = new DicomInputStream(f);
-        tagPrivateCreatorMap = new HashMap<Integer, String>();
-        maskTagMap = new HashMap<Integer, Integer>();
-        this.parse(dis);
+        try {
+            DicomInputStream dis = new DicomInputStream(f);
+            tagPrivateCreatorMap = new HashMap<Integer, String>();
+            maskTagMap = new HashMap<Integer, Integer>();
+            this.parse(dis);
+        } catch (java.io.EOFException e) {
+            System.out.println("Aborted Parse / java.io.EOFException: " + f.getAbsolutePath().toString());
+            System.out.println("DICOM parser thinks there are more bytes in the file. File is either truncated or improperly encoded");
+        } catch (Exception e) {
+            System.out.println("Aborted Parse / unknown exception: " + f.getAbsolutePath().toString());
+            e.printStackTrace();
+        }
 
 //        Integer three = new Integer(3);
 //        String name = f.getName();
@@ -218,16 +226,29 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         String tagString = TagUtils.toHexString(tag);
         byte[] b = dis.readValue();
         int width = 80;
-        StringBuilder line = new StringBuilder(width);
-        vr.prompt(b, dis.bigEndian(),
-                attrs.getSpecificCharacterSet(),
-                width - line.length() - 1, line);
-        if (tag == Tag.FileMetaInformationGroupLength)
-            dis.setFileMetaInformationGroupLength(b);
-        else if (tag == Tag.TransferSyntaxUID
-                || tag == Tag.SpecificCharacterSet
-                || TagUtils.isPrivateCreator(tag))
-            attrs.setBytes(tag, vr, b);
+        StringBuilder line = null;
+        if (vr == VR.UN || vr==VR.OB) {
+            line = new StringBuilder(vallen + 20);
+            line.append("" + b.length + " bytes: ");
+            byteToStringBuilder(b, line);
+        } else if (vr == VR.FD) {
+            line = new StringBuilder(40);
+            line.append("" + b.length + " bytes, FD values not reported");
+        } else if (vr == VR.DS) {
+            line = new StringBuilder(40);
+            line.append("" + b.length + " bytes, DS values not reported");
+        } else {
+            line = new StringBuilder(width);
+            vr.prompt(b, dis.bigEndian(),
+                    attrs.getSpecificCharacterSet(),
+                    width - line.length() - 1, line);
+            if (tag == Tag.FileMetaInformationGroupLength)
+                dis.setFileMetaInformationGroupLength(b);
+            else if (tag == Tag.TransferSyntaxUID
+                    || tag == Tag.SpecificCharacterSet
+                    || TagUtils.isPrivateCreator(tag))
+                attrs.setBytes(tag, vr, b);
+        }
 
         String elementValue = line.toString();
 
@@ -246,6 +267,42 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         }
 
         addPrivateElementString(dis, vr + " " + line.toString());
+    }
+
+    private void byteToStringBuilder(byte[] inputBytes, StringBuilder sb) {
+        StringBuilder tmp = new StringBuilder(100);
+        char lastChar = '.';
+        int len = inputBytes.length;
+        int index = 0;
+        char c = '.';
+        int  s = 0;
+        for (byte b: inputBytes) {
+            s = ((int)b) & 0xff;
+            if ((s >= 32) && (s< 127)) {
+                c = (char) b;
+                if (lastChar == '.') {
+                    sb.append(tmp);
+                    tmp = new StringBuilder(100);
+                }
+            } else {
+                c = '.';
+                if (lastChar != '.') {
+                    sb.append(tmp);
+                    tmp = new StringBuilder(100);
+                }
+            }
+
+            lastChar = c;
+            tmp.append(c);
+//            sb.append(c);
+            if (index++ > 20000) {
+                sb.append(tmp);
+                tmp = new StringBuilder(1);
+                sb.append(" Element dump truncated at 20,000 bytes");
+                break;
+            }
+        }
+        sb.append(tmp);
     }
 
     private void addStandardDateOrTimeElement(int tag, StringBuilder line) {

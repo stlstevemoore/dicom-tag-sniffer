@@ -54,6 +54,13 @@ public class TagReporter {
                 throw new Exception("Unable to create folder: " + outputFolder);
             }
         }
+
+        f = new File(outputFolder + "/private");
+        if (! f.isDirectory()) {
+            if (!f.mkdirs()) {
+                throw new Exception("Unable to create folder: " + outputFolder + "/private");
+            }
+        }
     }
 
     private void reportStandard() throws Exception {
@@ -102,15 +109,35 @@ public class TagReporter {
                     new BufferedOutputStream(new FileOutputStream(outputFolder + "/private_elements.txt")), "UTF-8"));
             out.println("Private Elements");
             writeElementTags(out, tagExtractor.getPrivateElementValues());
-            writeTreeMap(out,     tagExtractor.getPrivateElementValues());
+            writeTreeMap(out, tagExtractor.getPrivateElementValues());
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         } finally {
-            if(out != null) {
+            if (out != null) {
                 out.flush();
                 out.close();
+            }
+        }
+
+        // Now write separate files for each of the private elements
+        TreeMap<Integer, TreeSet<String>> privateElementMap = tagExtractor.getPrivateElementValues();
+        for (Integer i : privateElementMap.keySet()) {
+            try {
+                out = new PrintWriter(new OutputStreamWriter(
+                        new BufferedOutputStream(new FileOutputStream(outputFolder + "/private/" + TagUtils.toHexString(i) + ".txt")), "UTF-8"));
+                out.println("Private Element: " + TagUtils.toHexString(i));
+                writeTreeMap(out, privateElementMap, i);
+            } catch (UnsupportedEncodingException e) {
+                e.printStackTrace();
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            } finally {
+                if (out != null) {
+                    out.flush();
+                    out.close();
+                }
             }
         }
     }
@@ -197,6 +224,20 @@ public class TagReporter {
             for (String aValueSet : (Iterable<String>) valueSet) {
                 out.println("  " + aValueSet);
             }
+        }
+    }
+
+
+    private void writeTreeMap(PrintWriter out, TreeMap<Integer, TreeSet<String>> hashMap, Integer elementTag) throws Exception {
+
+        //        String elementName = ElementDictionary.keywordOf(i.intValue(), null);
+        //        VR vr = ElementDictionary.vrOf(i.intValue(), null);
+        out.println("\n" + TagUtils.toString(elementTag) + " " +
+                ElementDictionary.vrOf(elementTag, null).name() + " " +       // vr.name
+                ElementDictionary.keywordOf(elementTag, null));               // element name
+        TreeSet valueSet = hashMap.get(elementTag);
+        for (String aValueSet : (Iterable<String>) valueSet) {
+            out.println("  " + aValueSet);
         }
     }
 
