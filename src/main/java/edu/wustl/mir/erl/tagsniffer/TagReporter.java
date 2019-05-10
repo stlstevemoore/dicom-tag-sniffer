@@ -35,6 +35,9 @@ public class TagReporter {
     void report() throws Exception {
         createOutputFolder();
         reportSOPClasses();
+        reportFilePaths();
+        reportStudies();
+        reportPrivateElementCounts();
 
         reportStandard();
         reportStandardSequences();
@@ -180,6 +183,79 @@ public class TagReporter {
             }
         }
     }
+
+    private void reportFilePaths() throws Exception {
+        PrintWriter out = null;
+        try {
+            out = new PrintWriter(new OutputStreamWriter(
+                    new BufferedOutputStream(new FileOutputStream(outputFolder + "/paths.txt")), "UTF-8"));
+            out.println("File paths with SOP Classes");
+            writeSet(out, tagExtractor.getFilePathSOPClass());
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } finally {
+            if(out != null) {
+                out.flush();
+                out.close();
+            }
+        }
+    }
+
+
+    private void reportStudies() throws Exception {
+        PrintWriter out = null;
+        try {
+            out = new PrintWriter(new OutputStreamWriter(
+                    new BufferedOutputStream(new FileOutputStream(outputFolder + "/dicom_studies.txt")), "UTF-8"));
+            out.println("DICOM Studies");
+            writeSet(out, tagExtractor.getStudyUIDSet());
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } finally {
+            if(out != null) {
+                out.flush();
+                out.close();
+            }
+        }
+    }
+
+
+    private void reportPrivateElementCounts() throws Exception {
+        PrintWriter out = null;
+        try {
+            out = new PrintWriter(new OutputStreamWriter(
+                    new BufferedOutputStream(new FileOutputStream(outputFolder + "/counts.txt")), "UTF-8"));
+
+            TreeMap<String, Integer> filesInStudies = tagExtractor.getFilesInStudies();
+            TreeMap<String, Integer> e1 = tagExtractor.getPrivateElements_1();
+            TreeMap<String, Integer> e2 = tagExtractor.getPrivateElements_2();
+            TreeMap<String, Integer> e3 = tagExtractor.getPrivateElements_3();
+
+            out.println("Private Element Counts");
+            Set<String> studyUIDs = tagExtractor.getStudyUIDSet();
+            for (String uid : studyUIDs) {
+                Integer fileCount = filesInStudies.get(uid);
+                Integer count1 = e1.get(uid);
+                Integer count2 = e2.get(uid);
+                Integer count3 = e3.get(uid);
+                out.println(uid + " Files/1000/20000/50000 " +fileCount + " " + count1 + " " + count2 + " " + count3);
+            }
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } finally {
+            if(out != null) {
+                out.flush();
+                out.close();
+            }
+        }
+    }
+
 
     private void reportDatesAndTimes() throws Exception {
         PrintWriter out = null;

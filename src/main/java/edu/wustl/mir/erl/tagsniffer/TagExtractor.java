@@ -27,6 +27,8 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
     private TreeMap<Integer, TreeSet<String>> timeValues = null;
     private TreeSet<String> privateCreatorIds = null;
 
+    private TreeSet<String> filePathSOPClass  = null;
+
     // These next two HashMaps are created on a per file basis.
     private HashMap<Integer, String> tagPrivateCreatorMap = null;
     private HashMap<Integer, Integer> maskTagMap = null;
@@ -34,13 +36,28 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
     private TreeSet<String>  privateElementSet = null;
     //private TreeSet<Integer> privateElementTags = null;
     private TreeSet<String>  sopClassSet = null;
+    private TreeSet<String>  studyUIDSet = null;
 
     private HashMap<Integer, String> truncatedStandardElements = null;
+
+    private TreeMap<String, Integer> privateElements_1 = null;
+    private TreeMap<String, Integer> privateElements_2 = null;
+    private TreeMap<String, Integer> privateElements_3 = null;
+    private TreeMap<String, Integer> filesInStudies = null;
 
     private int[] sequenceElementTags = null;
     //private String lastPrivateCreator = null;
 
     //private int counter = 0;
+    private String instanceUID = null;
+    private String seriesUID = null;
+    private String studyUID  = null;
+    private String accessionNumber = null;
+    private String studyId = null;
+    private String classUID = null;
+    private int privateElementSize_1 = 0;
+    private int privateElementSize_2 = 0;
+    private int privateElementSize_3 = 0;
 
     TagExtractor(String folder) {
         super(folder);
@@ -54,6 +71,13 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         privateCreatorIds = new TreeSet<String>();
         privateElementSet = new TreeSet<String>();
         sopClassSet = new TreeSet<String>();
+        studyUIDSet = new TreeSet<String>();
+        privateElements_1 = new TreeMap<String, Integer>();
+        privateElements_2 = new TreeMap<String, Integer>();
+        privateElements_3 = new TreeMap<String, Integer>();
+        filesInStudies = new TreeMap<String, Integer>();
+
+        filePathSOPClass  = new TreeSet<String>();
 
         truncatedStandardElements = new HashMap<Integer, String>();
         truncatedStandardElements.put(Tag.InstanceNumber, "Set of Instance Numbers truncated");
@@ -109,7 +133,9 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
             DicomInputStream dis = new DicomInputStream(f);
             tagPrivateCreatorMap = new HashMap<Integer, String>();
             maskTagMap = new HashMap<Integer, Integer>();
+            preFileProcessing();
             this.parse(dis);
+            postFileProcessing(f.getAbsolutePath());
         } catch (java.io.EOFException e) {
             System.out.println("Aborted Parse / java.io.EOFException: " + f.getAbsolutePath().toString());
             System.out.println("DICOM parser thinks there are more bytes in the file. File is either truncated or improperly encoded");
@@ -117,10 +143,51 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
             System.out.println("Aborted Parse / unknown exception: " + f.getAbsolutePath().toString());
             e.printStackTrace();
         }
+    }
 
-//        Integer three = new Integer(3);
-//        String name = f.getName();
-//        addPublicString(three, name);
+    private void postFileProcessing(String path) {
+        filePathSOPClass.add(path + "   @   " + classUID);
+        Integer ix;
+
+        ix = privateElements_1.get(studyUID);
+        if (ix == null) {
+            ix = new Integer(0);
+        }
+        ix += privateElementSize_1;
+        privateElements_1.put(studyUID, ix);
+
+        ix = privateElements_2.get(studyUID);
+        if (ix == null) {
+            ix = new Integer(0);
+        }
+        ix += privateElementSize_2;
+        privateElements_2.put(studyUID, ix);
+
+        ix = privateElements_3.get(studyUID);
+        if (ix == null) {
+            ix = new Integer(0);
+        }
+        ix += privateElementSize_3;
+        privateElements_3.put(studyUID, ix);
+
+        ix = filesInStudies.get(studyUID);
+        if (ix == null) {
+            ix = new Integer(0);
+        }
+        ix++;
+        filesInStudies.put(studyUID, ix);
+    }
+
+    private void preFileProcessing () {
+        String instanceUID = "";
+        String seriesUID = "";
+        String studyUID  = "";
+        String accessionNumber = "";
+        String studyId = "";
+        String classUID = "";
+        privateElementSize_1 = 0;
+        privateElementSize_2 = 0;
+        privateElementSize_3 = 0;
     }
 
     private void parse(DicomInputStream dis) throws IOException {
@@ -197,11 +264,10 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
                 || tag == Tag.SpecificCharacterSet
                 || TagUtils.isPrivateCreator(tag))
             attrs.setBytes(tag, vr, b);
-        addStandardElementString(dis, line.toString());
+
+        String elementValue = line.toString();
+        addStandardElementString(dis, elementValue);
         addStandardDateOrTimeElement(tag, line);
-        if (tag == Tag.SOPClassUID) {
-            sopClassSet.add(line.toString());
-        }
     }
 
     private void readPrivateElement(DicomInputStream dis, Attributes attrs)
@@ -231,6 +297,14 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
             line = new StringBuilder(vallen + 20);
             line.append("" + b.length + " bytes: ");
             byteToStringBuilder(b, line);
+// 1000, 20000, 50000
+            if (vallen > 50000) {
+                privateElementSize_3++;
+            } else if (vallen > 20000) {
+                privateElementSize_2++;
+            } else if (vallen > 1000) {
+                privateElementSize_1++;
+            }
         } else if (vr == VR.FD) {
             line = new StringBuilder(40);
             line.append("" + b.length + " bytes, FD values not reported");
@@ -358,6 +432,15 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         return sopClassSet;
     }
 
+    TreeSet<String> getFilePathSOPClass() { return filePathSOPClass; }
+
+    TreeSet<String> getStudyUIDSet() { return studyUIDSet; }
+
+    TreeMap<String, Integer> getPrivateElements_1() { return privateElements_1; }
+    TreeMap<String, Integer> getPrivateElements_2() { return privateElements_2; }
+    TreeMap<String, Integer> getPrivateElements_3() { return privateElements_3; }
+    TreeMap<String, Integer> getFilesInStudies() { return filesInStudies; }
+
 /*
     private void addStandardElementString(int key, String value) {
         try {
@@ -372,7 +455,32 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
     private void addStandardElementString(DicomInputStream dis, String value) {
         try {
             if (dis.level() == 0) {
-                addStandardElementString(dis.tag(), value);
+                int tag = dis.tag();
+                addStandardElementString(tag, value);
+                switch (tag) {
+                    case Tag.MediaStorageSOPClassUID:
+                        classUID = value;
+                        sopClassSet.add(value);
+                        break;
+                    case Tag.SOPInstanceUID:
+                        instanceUID = value;
+                        break;
+                    case Tag.StudyInstanceUID:
+                        studyUID = value;
+                        studyUIDSet.add(value);
+                        break;
+                    case Tag.SeriesInstanceUID:
+                        seriesUID = value;
+                        break;
+                    case Tag.AccessionNumber:
+                        accessionNumber = value;
+                        break;
+                    case Tag.StudyID:
+                        studyId = value;
+                        break;
+                    default:
+                        break;
+                }
             } else {
                 addToTreeStringMap(publicSequenceValues, dis, value);
             }
