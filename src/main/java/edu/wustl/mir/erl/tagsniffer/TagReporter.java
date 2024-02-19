@@ -64,6 +64,14 @@ public class TagReporter {
                 throw new Exception("Unable to create folder: " + outputFolder + "/private");
             }
         }
+
+
+        f = new File(outputFolder + "/standard");
+        if (! f.isDirectory()) {
+            if (!f.mkdirs()) {
+                throw new Exception("Unable to create folder: " + outputFolder + "/standard");
+            }
+        }
     }
 
     private void reportStandard() throws Exception {
@@ -82,6 +90,26 @@ public class TagReporter {
             if(out != null) {
                 out.flush();
                 out.close();
+            }
+        }
+
+        // Now write separate files for each of the standard elements
+        TreeMap<Integer, TreeSet<String>> standardElementMap = tagExtractor.getPublicElementValues();
+        for (Integer i : standardElementMap.keySet()) {
+            try {
+                out = new PrintWriter(new OutputStreamWriter(
+                        new BufferedOutputStream(new FileOutputStream(outputFolder + "/standard/" + TagUtils.toHexString(i) + ".txt")), "UTF-8"));
+                out.println("Standard Element: " + TagUtils.toHexString(i));
+                writeTreeMap(out, standardElementMap, i);
+            } catch (UnsupportedEncodingException e) {
+                e.printStackTrace();
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            } finally {
+                if (out != null) {
+                    out.flush();
+                    out.close();
+                }
             }
         }
     }
@@ -111,8 +139,8 @@ public class TagReporter {
             out = new PrintWriter(new OutputStreamWriter(
                     new BufferedOutputStream(new FileOutputStream(outputFolder + "/private_elements.txt")), "UTF-8"));
             out.println("Private Elements");
-            writeElementTags(out, tagExtractor.getPrivateElementValues());
-            writeTreeMap(out, tagExtractor.getPrivateElementValues());
+            writeElementKeys(out, tagExtractor.getPrivateElementValues());
+            writeTreeMapStringKeys(out, tagExtractor.getPrivateElementValues());
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         } catch (FileNotFoundException e) {
@@ -125,13 +153,14 @@ public class TagReporter {
         }
 
         // Now write separate files for each of the private elements
-        TreeMap<Integer, TreeSet<String>> privateElementMap = tagExtractor.getPrivateElementValues();
-        for (Integer i : privateElementMap.keySet()) {
+        TreeMap<String, TreeSet<String>> privateElementMap = tagExtractor.getPrivateElementValues();
+        for (String key : privateElementMap.keySet()) {
             try {
+                String fileBase = key.replaceAll(" ", "_");
                 out = new PrintWriter(new OutputStreamWriter(
-                        new BufferedOutputStream(new FileOutputStream(outputFolder + "/private/" + TagUtils.toHexString(i) + ".txt")), "UTF-8"));
-                out.println("Private Element: " + TagUtils.toHexString(i));
-                writeTreeMap(out, privateElementMap, i);
+                        new BufferedOutputStream(new FileOutputStream(outputFolder + "/private/" + fileBase + ".txt")), "UTF-8"));
+                out.println("Private Element: " + key);
+                writeTreeMap(out, privateElementMap, key);
             } catch (UnsupportedEncodingException e) {
                 e.printStackTrace();
             } catch (FileNotFoundException e) {
@@ -254,6 +283,29 @@ public class TagReporter {
                 out.close();
             }
         }
+
+        try {
+            out = new PrintWriter(new OutputStreamWriter(
+                    new BufferedOutputStream(new FileOutputStream(outputFolder + "/large_private_elements.txt")), "UTF-8"));
+
+            TreeMap<String, Integer> largePrivateElements = tagExtractor.getLargePrivateElements();
+
+            out.println("Large Private Element Counts");
+            for (String hash : largePrivateElements.keySet()) {
+                Integer hashCount = largePrivateElements.get(hash);
+                out.println("Hash: " + hash + ", count: " + hashCount);
+            }
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } finally {
+            if(out != null) {
+                out.flush();
+                out.close();
+            }
+        }
+
     }
 
 
@@ -289,6 +341,16 @@ public class TagReporter {
         }
     }
 
+    private void writeElementKeys(PrintWriter out, TreeMap<String, TreeSet<String>> hashMap) throws Exception {
+        Iterator<String> it = hashMap.keySet().iterator();
+        out.println("List of Element Keys");
+        while (it.hasNext()) {
+            String key = it.next();
+            out.println(key);
+
+        }
+    }
+
     private void writeTreeMap(PrintWriter out, TreeMap<Integer, TreeSet<String>> hashMap) throws Exception {
         for (Integer i : hashMap.keySet()) {
             //        String elementName = ElementDictionary.keywordOf(i.intValue(), null);
@@ -297,6 +359,16 @@ public class TagReporter {
                     ElementDictionary.vrOf(i, null).name() + " " +       // vr.name
                     ElementDictionary.keywordOf(i, null));               // element name
             TreeSet valueSet = hashMap.get(i);
+            for (String aValueSet : (Iterable<String>) valueSet) {
+                out.println("  " + aValueSet);
+            }
+        }
+    }
+
+    private void writeTreeMapStringKeys(PrintWriter out, TreeMap<String, TreeSet<String>> hashMap) throws Exception {
+        for (String key : hashMap.keySet()) {
+            out.println("\n" + key);               // element name
+            TreeSet valueSet = hashMap.get(key);
             for (String aValueSet : (Iterable<String>) valueSet) {
                 out.println("  " + aValueSet);
             }
@@ -312,6 +384,14 @@ public class TagReporter {
                 ElementDictionary.vrOf(elementTag, null).name() + " " +       // vr.name
                 ElementDictionary.keywordOf(elementTag, null));               // element name
         TreeSet valueSet = hashMap.get(elementTag);
+        for (String aValueSet : (Iterable<String>) valueSet) {
+            out.println("  " + aValueSet);
+        }
+    }
+
+    private void writeTreeMap(PrintWriter out, TreeMap<String, TreeSet<String>> hashMap, String key) throws Exception {
+        out.println("\n" + key);               // element name
+        TreeSet valueSet = hashMap.get(key);
         for (String aValueSet : (Iterable<String>) valueSet) {
             out.println("  " + aValueSet);
         }

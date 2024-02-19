@@ -1,11 +1,12 @@
 package edu.wustl.mir.erl.tagsniffer;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.ArrayList;
+import java.security.MessageDigest;
 
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.io.DicomInputStream;
@@ -18,57 +19,62 @@ import org.dcm4che3.data.VR;
 import org.dcm4che3.util.TagUtils;
 
 public class TagExtractor extends FolderScanner implements DicomInputHandler {
+    private String reportPath;
+    private String currentFilePath;
     private int fileCount = 0;
-    private TreeMap<Integer, TreeSet<String>> publicElementValues = null;
-    private TreeMap<Integer, TreeSet<String>> privateElementValues = null;
-    private TreeMap<String,  TreeSet<String>> publicSequenceValues = null;
-    private TreeMap<String,  TreeSet<String>> privateSequenceValues = null;
-    private TreeMap<Integer, TreeSet<String>> dateValues = null;
-    private TreeMap<Integer, TreeSet<String>> timeValues = null;
-    private TreeSet<String> privateCreatorIds = null;
+    private TreeMap<Integer, TreeSet<String>> publicElementValues  = new TreeMap<Integer, TreeSet<String>>();
+    private TreeMap<String,  TreeSet<String>> privateElementValues = new TreeMap<String, TreeSet<String>>();
+    private TreeMap<String,  TreeSet<String>> publicSequenceValues = new TreeMap<String, TreeSet<String>>();
+    private TreeMap<String,  TreeSet<String>> privateSequenceValues = new TreeMap<String, TreeSet<String>>();
+    private TreeMap<Integer, TreeSet<String>> dateValues           = new TreeMap<Integer, TreeSet<String>>();
+    private TreeMap<Integer, TreeSet<String>> timeValues           = new TreeMap<Integer, TreeSet<String>>();
+    private TreeSet<String> privateCreatorIds                      = new TreeSet<String>();
+    private TreeMap<String, String> privateCreatorIndexValues      = new TreeMap<String, String>();
 
-    private TreeSet<String> filePathSOPClass  = null;
+    private TreeSet<String> filePathSOPClass                       = new TreeSet<String>();
 
     // These next two HashMaps are created on a per file basis.
-    private HashMap<Integer, String> tagPrivateCreatorMap = null;
-    private HashMap<Integer, Integer> maskTagMap = null;
+    private HashMap<Integer, String> tagPrivateCreatorMap;
+    private HashMap<Integer, Integer> maskTagMap;
 
-    private TreeSet<String>  privateElementSet = null;
+    private TreeSet<String>  privateElementSet;
     //private TreeSet<Integer> privateElementTags = null;
-    private TreeSet<String>  sopClassSet = null;
-    private TreeSet<String>  studyUIDSet = null;
+    private TreeSet<String>  sopClassSet;
+    private TreeSet<String>  studyUIDSet;
 
-    private HashMap<Integer, String> truncatedStandardElements = null;
+    private HashMap<Integer, String> truncatedStandardElements;
 
-    private TreeMap<String, Integer> privateElements_1 = null;
-    private TreeMap<String, Integer> privateElements_2 = null;
-    private TreeMap<String, Integer> privateElements_3 = null;
-    private TreeMap<String, Integer> filesInStudies = null;
+    private TreeMap<String, Integer> privateElements_1;
+    private TreeMap<String, Integer> privateElements_2;
+    private TreeMap<String, Integer> privateElements_3;
+    private TreeMap<String, Integer> filesInStudies;
 
-    private int[] sequenceElementTags = null;
-    //private String lastPrivateCreator = null;
+    // Key is the hash of the large element value, value is the number of times we see it
+    private TreeMap<String, Integer> largePrivateElements = new TreeMap<String, Integer>();
+
+    private int[] sequenceElementTags;
+//    private String lastPrivateCreator;
+    //private TreeMap<Integer, String> privateCreatorIDMap;
+
+    private ArrayList<ElementInContext> elementsInContext;
 
     //private int counter = 0;
-    private String instanceUID = null;
-    private String seriesUID = null;
-    private String studyUID  = null;
-    private String accessionNumber = null;
-    private String studyId = null;
-    private String classUID = null;
+    private String instanceUID;
+    private String seriesUID;
+    private String studyUID;
+    private String accessionNumber;
+    private String studyId ;
+    private String classUID;
     private int privateElementSize_1 = 0;
     private int privateElementSize_2 = 0;
     private int privateElementSize_3 = 0;
 
-    TagExtractor(String folder) {
-        super(folder);
+    private ScanDefinitions scanDefinitions = null;
 
-        publicElementValues = new TreeMap<Integer, TreeSet<String>>();
-        privateElementValues = new TreeMap<Integer, TreeSet<String>>();
-        publicSequenceValues = new TreeMap<String, TreeSet<String>>();
-        privateSequenceValues = new TreeMap<String, TreeSet<String>>();
-        dateValues = new TreeMap<Integer, TreeSet<String>>();
-        timeValues = new TreeMap<Integer, TreeSet<String>>();
-        privateCreatorIds = new TreeSet<String>();
+    TagExtractor(String folder, String reportPath, String scanDefinitionsPath) throws Exception {
+        super(folder);
+        this.reportPath = reportPath;
+
         privateElementSet = new TreeSet<String>();
         sopClassSet = new TreeSet<String>();
         studyUIDSet = new TreeSet<String>();
@@ -77,7 +83,10 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         privateElements_3 = new TreeMap<String, Integer>();
         filesInStudies = new TreeMap<String, Integer>();
 
-        filePathSOPClass  = new TreeSet<String>();
+        privateCreatorIndexValues.put("00130000 CTP", "0013Ra");
+        privateCreatorIndexValues.put("00190000 SIEMENS CT VA0  COAD", "0019Sa");
+        privateCreatorIndexValues.put("00210000 SIEMENS MED", "0021Sb");
+        privateCreatorIndexValues.put("00E10000 ELSCINT1", "00E1Ea");
 
         truncatedStandardElements = new HashMap<Integer, String>();
         truncatedStandardElements.put(Tag.InstanceNumber, "Set of Instance Numbers truncated");
@@ -121,6 +130,11 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         for (int i = 0; i < 20; i++) {
             sequenceElementTags[i] = 0;
         }
+
+        scanDefinitions = ScanDefinitionsFactory.readScanDefinitions(scanDefinitionsPath);
+        //String versionDate = scanDefinitions.getVersion().getDate();
+        //String versionRelease = scanDefinitions.getVersion().getRelease();
+        //String x = versionRelease + " " + versionDate;
     }
 
     public void processFile(File f) throws Exception {
@@ -131,11 +145,9 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         }
         try {
             DicomInputStream dis = new DicomInputStream(f);
-            tagPrivateCreatorMap = new HashMap<Integer, String>();
-            maskTagMap = new HashMap<Integer, Integer>();
-            preFileProcessing();
+            preFileProcessing(f);
             this.parse(dis);
-            postFileProcessing(f.getAbsolutePath());
+            postFileProcessing(f.getAbsolutePath(), dis);
         } catch (java.io.EOFException e) {
             System.out.println("Aborted Parse / java.io.EOFException: " + f.getAbsolutePath().toString());
             System.out.println("DICOM parser thinks there are more bytes in the file. File is either truncated or improperly encoded");
@@ -145,7 +157,7 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         }
     }
 
-    private void postFileProcessing(String path) {
+    private void postFileProcessing(String path, DicomInputStream dis) throws IOException {
         filePathSOPClass.add(path + "   @   " + classUID);
         Integer ix;
 
@@ -176,9 +188,27 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         }
         ix++;
         filesInStudies.put(studyUID, ix);
+
+/*        for (ElementInContext e: elementsInContext) {
+            System.out.println("" + TagUtils.toHexString(e.getElementTag()) +
+                    String.format("%10d", e.getTagPosition()) + " " +
+                    e.getElementName());
+            if (e.getElementTag() != 0x7fe00010) {
+                dis.setPosition(e.getTagPosition());
+                dis.
+                int width = 80;
+                StringBuilder line = new StringBuilder(width);
+//                dis.vr().prompt(b, dis.bigEndian(),
+//                        dis.readItem().getSpecificCharacterSet(),
+//                        width - line.length() - 1, line);
+//                System.out.println("  " + line);
+            }
+
+        }*/
+        String z = null;
     }
 
-    private void preFileProcessing () {
+    private void preFileProcessing (File f) {
         String instanceUID = "";
         String seriesUID = "";
         String studyUID  = "";
@@ -188,6 +218,11 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         privateElementSize_1 = 0;
         privateElementSize_2 = 0;
         privateElementSize_3 = 0;
+        currentFilePath = f.getAbsolutePath();
+
+        elementsInContext = new ArrayList<ElementInContext>();
+        tagPrivateCreatorMap = new HashMap<Integer, String>();
+        maskTagMap = new HashMap<Integer, Integer>();
     }
 
     private void parse(DicomInputStream dis) throws IOException {
@@ -239,10 +274,16 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         VR vr = dis.vr();
         int vallen = dis.length();
         int tag = dis.tag();
+        String xy = dis.getAttributePath();
+        System.out.println(xy);
         boolean undeflen = vallen == -1;
         if (vr == VR.SQ) {
             sequenceElementTags[dis.level()] = dis.tag();
         }
+
+        ElementInContext e = new ElementInContext(dis.getTagPosition(), tag, ElementDictionary.keywordOf(tag, null));
+        elementsInContext.add(e);
+
 
         if (vr == VR.SQ || undeflen) {
             dis.readValue(dis, attrs);
@@ -253,7 +294,7 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         }
 
         byte[] b = dis.readValue();
-        int width = 80;
+        int width = 160;
         StringBuilder line = new StringBuilder(width);
         vr.prompt(b, dis.bigEndian(),
                 attrs.getSpecificCharacterSet(),
@@ -266,8 +307,62 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
             attrs.setBytes(tag, vr, b);
 
         String elementValue = line.toString();
+        elementValue = applyScanningRules(elementValue, tag, vr);
         addStandardElementString(dis, elementValue);
-        addStandardDateOrTimeElement(tag, line);
+        addStandardDateOrTimeElement(tag, elementValue);
+    }
+
+    // ToDO need a more efficient mechanism
+    private String applyScanningRules(String inputString, int tag, VR vr) {
+        if (scanDefinitions != null) {
+            boolean ruleTriggered = false;
+            String tagString = TagUtils.toHexString(tag);
+            StandardElements standardElements = scanDefinitions.getRules().getStandardElements();
+
+            // Search rules for anything that matches a specific element tag. Apply those rules first.
+
+            for (Rule rule : standardElements.getRule()) {
+                String ruleTag = rule.getTag();
+                if (tagString.equals(ruleTag)) {
+                    String regex = rule.getPattern();
+                    if (inputString.matches(rule.getPattern())) {
+                        inputString = rule.getReplace();
+                        ruleTriggered = true;
+                        break;
+                    }
+                }
+            }
+            if (!ruleTriggered) {
+                String xy = null;
+                // Search rules by VR
+                for (Rule rule: standardElements.getRule()) {
+                    String vrCode = rule.getVr();
+                    VR x = translateVRCode(vrCode);
+                    if (vr == x) {
+                        if (inputString.matches(rule.getPattern())) {
+                            inputString = rule.getReplace();
+                            ruleTriggered = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return inputString;
+    }
+
+    private VR translateVRCode(String code) {
+        VR rtn = null;
+        if (code == null) {
+            ; // nothing to do
+        } else if (code.equals("DA")) {
+            rtn = VR.DA;
+        } else if (code.equals("DT")) {
+            rtn = VR.DT;
+        } else if (code.equals("SH")) {
+            rtn = VR.SH;
+        }
+        return rtn;
     }
 
     private void readPrivateElement(DicomInputStream dis, Attributes attrs)
@@ -290,14 +385,12 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         }
 
         String tagString = TagUtils.toHexString(tag);
-        byte[] b = dis.readValue();
+        byte[] b = null; //dis.readValue();
         int width = 80;
         StringBuilder line = null;
-        if (vr == VR.UN || vr==VR.OB) {
-            line = new StringBuilder(vallen + 20);
-            line.append("" + b.length + " bytes: ");
-            byteToStringBuilder(b, line);
-// 1000, 20000, 50000
+        boolean reportPrivateElementInSeparateFile = false;
+        if ((vr == VR.UN || vr==VR.OB) && vallen > 100) {
+            reportPrivateElementInSeparateFile = true;
             if (vallen > 50000) {
                 privateElementSize_3++;
             } else if (vallen > 20000) {
@@ -306,41 +399,129 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
                 privateElementSize_1++;
             }
         } else if (vr == VR.FD) {
+            b = dis.readValue();
             line = new StringBuilder(40);
             line.append("" + b.length + " bytes, FD values not reported");
         } else if (vr == VR.DS) {
+            b = dis.readValue();
             line = new StringBuilder(40);
             line.append("" + b.length + " bytes, DS values not reported");
-        } else {
-            line = new StringBuilder(width);
+        } else if (vr == VR.UN) {
+            line = new StringBuilder(width*2 + 20);
+            b=dis.readValue();
             vr.prompt(b, dis.bigEndian(),
                     attrs.getSpecificCharacterSet(),
                     width - line.length() - 1, line);
-            if (tag == Tag.FileMetaInformationGroupLength)
-                dis.setFileMetaInformationGroupLength(b);
-            else if (tag == Tag.TransferSyntaxUID
-                    || tag == Tag.SpecificCharacterSet
-                    || TagUtils.isPrivateCreator(tag))
-                attrs.setBytes(tag, vr, b);
+            line.append(" --ASCII-- " ).append(makeBytesPrintable(b));
+        } else {
+            line = new StringBuilder(width);
+            b=dis.readValue();
+            vr.prompt(b, dis.bigEndian(),
+                    attrs.getSpecificCharacterSet(),
+                    width - line.length() - 1, line);
         }
 
-        String elementValue = line.toString();
-
+        String privateCreatorId;
+        String elementKeyword = "xxxxxxxx";
         if (TagUtils.isPrivateCreator(tag)) {
-            privateCreatorIds.add(tagString + "\t" + elementValue);
-            tagPrivateCreatorMap.put(tag, elementValue);
-            int mask = this.constructPrivateCreatorMask(tag);
+            privateCreatorId = line.toString().replaceAll("/", "_");
+            String tmp = TagUtils.toHexString(tag);
+            elementKeyword = tmp.substring(0, 4) + "__" + tmp.substring(6);
+            privateCreatorIds.add(tagString + "\t" + privateCreatorId);
+
+            int mask = this.constructPrivateCreatorMask(tag);   // This is GGGG0000 plus lower byte shifted left one byte
+                                                                // If original was GGGGxxXX, result is GGGGXX00
+            tmp = TagUtils.toHexString(mask);
+
+            if (tagPrivateCreatorMap.containsKey(mask)) {
+                System.out.println("ERROR: Tried to add a private element key to our map when one already exists: " + privateCreatorId + " " + tmp);
+                System.out.println(" File path: " + currentFilePath);
+            }
+            tagPrivateCreatorMap.put(mask, privateCreatorId);
             maskTagMap.put(mask, tag);
-            privateElementSet.add(tagString + "\t" + elementValue);
-            //lastPrivateCreator = elementValue;
+            privateElementSet.add(tagString + "\t" + privateCreatorId);
         } else {
             int maskedTag = tag & 0xffffff00;
-            Integer privateGroupTag = maskTagMap.get(maskedTag);
-            String privateCreatorId = tagPrivateCreatorMap.get(privateGroupTag);
+            privateCreatorId = tagPrivateCreatorMap.get(maskedTag);
+            if (privateCreatorId == null) {
+                System.out.println("ERROR: Failed to find a private creator ID for: " + TagUtils.toHexString(tag));
+                System.out.println(" File: " + currentFilePath);
+                privateCreatorId = "No Private Creator ID";
+            }
+            String tmp = TagUtils.toHexString(tag);
+            elementKeyword = tmp.substring(0, 4) + "xx" + tmp.substring(6);
+//            String privateCreatorKey = TagUtils.toHexString(tag & 0xffff00ff) + " " + privateCreatorId;
+//            String privateCreatorVal = privateCreatorIndexValues.get(privateCreatorKey);
+//            System.out.println("XXX: " + TagUtils.toHexString(tag) + " " + privateCreatorKey + " " + privateCreatorVal);
+            //Integer privateGroupTag = maskTagMap.get(maskedTag);
+            //String privateCreatorId = tagPrivateCreatorMap.get(privateGroupTag);
             privateElementSet.add(tagString + "\t" + privateCreatorId);
         }
 
-        addPrivateElementString(dis, vr + " " + line.toString());
+        if (reportPrivateElementInSeparateFile) {
+            elementKeyword = elementKeyword.substring(0,4) + "XL" + elementKeyword.substring(6);
+            b = dis.readValue();
+            dumpLargePrivateElement(dis, b, privateCreatorId, elementKeyword);
+            addPrivateElementString(dis, vr + " XL Element logged to file", privateCreatorId, elementKeyword);
+        } else {
+            addPrivateElementString(dis, vr + " " + line.toString(), privateCreatorId, elementKeyword);
+        }
+    }
+
+    private void dumpLargePrivateElement(DicomInputStream dis, byte[] b, String privateCreatorId, String elementKeyword) throws IOException {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+
+            md.update(b);
+            byte[] digest = md.digest();
+            String hexDigest = TagUtils.toHexString(digest);
+            System.out.println("DIGEST: " + hexDigest);
+            if (largePrivateElements.containsKey(hexDigest)) {
+                Integer count = largePrivateElements.get(hexDigest) + 1;
+                largePrivateElements.put(hexDigest, count);
+                return;
+            } else {
+                largePrivateElements.put(hexDigest, 1);
+            }
+        } catch (java.security.NoSuchAlgorithmException e) {
+            // If this happens, we just continue on
+        }
+        VR vr = dis.vr();
+        int vallen = dis.length();
+
+        String header = String.format("%s_%s_%d: ", privateCreatorId, elementKeyword, vallen).replaceAll("\\s+", "_");
+        System.out.println(header);
+        StringBuilder sb = makeBytesPrintable(b);
+
+        String fileName = privateCreatorId.replaceAll("\\s+", "_") + "_" + elementKeyword + ".txt";
+
+        PrintWriter out = null;
+        try {
+            File folder = new File(reportPath + "/private_xl");
+            if (!folder.exists()) {
+                folder.mkdirs();
+            }
+            boolean appendFlag = false;
+            File f = new File(reportPath + "/private_xl/" + fileName);
+            if (f.exists()) {
+                appendFlag = true;
+            }
+            out = new PrintWriter(new OutputStreamWriter(
+                    new BufferedOutputStream(new FileOutputStream(f, true)), "UTF-8"));
+            out.print  (header);
+            out.println(sb);
+            sb = null;
+            System.gc();
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } finally {
+            if (out != null) {
+                out.flush();
+                out.close();
+            }
+        }
     }
 
     private void byteToStringBuilder(byte[] inputBytes, StringBuilder sb) {
@@ -368,7 +549,6 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
 
             lastChar = c;
             tmp.append(c);
-//            sb.append(c);
             if (index++ > 20000) {
                 sb.append(tmp);
                 tmp = new StringBuilder(1);
@@ -379,13 +559,28 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         sb.append(tmp);
     }
 
-    private void addStandardDateOrTimeElement(int tag, StringBuilder line) {
+    private StringBuilder makeBytesPrintable(byte[] inputBytes) {
+        StringBuilder builder = new StringBuilder(inputBytes.length + 1);
+        byte b = 0;
+        int  s = 0;
+        for (int ix = 0; ix < inputBytes.length; ix++) {
+            s = ((int)inputBytes[ix]) & 0xff;
+            if (s < 32 || s > 127) {
+                builder.append(',');
+             } else {
+                builder.append((char)s);
+            }
+        }
+        return builder;
+    }
+
+    private void addStandardDateOrTimeElement(int tag, String string) {
         if (VR.DT == ElementDictionary.vrOf(tag, null)) {
-            addToTreeMap(dateValues, tag, line.toString());
+            addToTreeMap(dateValues, tag, string);
         } else if (VR.DA == ElementDictionary.vrOf(tag, null)) {
-            addToTreeMap(dateValues, tag, line.toString());
+            addToTreeMap(dateValues, tag, string);
         } else if (VR.TM == ElementDictionary.vrOf(tag, null)) {
-            addToTreeMap(timeValues, tag, line.toString(), 5);
+            addToTreeMap(timeValues, tag, string, 5);
         }
     }
 
@@ -404,7 +599,7 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
         return publicSequenceValues;
     }
 
-    TreeMap<Integer, TreeSet<String>> getPrivateElementValues() {
+    TreeMap<String, TreeSet<String>> getPrivateElementValues() {
         return privateElementValues;
     }
 
@@ -440,6 +635,7 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
     TreeMap<String, Integer> getPrivateElements_2() { return privateElements_2; }
     TreeMap<String, Integer> getPrivateElements_3() { return privateElements_3; }
     TreeMap<String, Integer> getFilesInStudies() { return filesInStudies; }
+    TreeMap<String, Integer> getLargePrivateElements() { return largePrivateElements; }
 
 /*
     private void addStandardElementString(int key, String value) {
@@ -514,29 +710,13 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
     }
 
 
-/*    private void addPrivateElementString(int key, String value) {
-        try {
-            addPrivateElementString(new Integer(key), value);
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.exit(1);
-        }
-    }*/
 
-/*    private void addPrivateElementString(Integer key, String value) throws Exception {
-        TreeSet<String> set = null;
-        if (!privateElementValues.containsKey(key)) {
-            privateElementValues.put(key, new TreeSet<String>());
-        }
-        set = privateElementValues.get(key);
-        set.add(value);
-        privateElementValues.put(key, set);
-    }*/
-
-    private void addPrivateElementString(DicomInputStream dis, String value) {
+    private void addPrivateElementString(DicomInputStream dis, String value, String privateCreatorId, String elementKeyword) {
         try {
             if (dis.level() == 0) {
-                addToTreeMap(privateElementValues, dis.tag(), value);
+                int maskedTag = dis.tag() & 0xffffff00;
+                String key = privateCreatorId + " " + elementKeyword;
+                addToTreeMap(privateElementValues, key, value);
             } else {
                 addToTreeStringMap(privateSequenceValues, dis, value);
             }
@@ -545,6 +725,7 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
             System.exit(1);
         }
     }
+
 
     /**
      * Stores one string value in a set of values that are associated the (DICOM Sequence) element.
@@ -603,7 +784,7 @@ public class TagExtractor extends FolderScanner implements DicomInputHandler {
     }
 
     private void addStandardElementString(Integer key, String value) throws Exception {
-        addToTreeMap(publicElementValues, key, value, 5);
+        addToTreeMap(publicElementValues, key, value, 10);
     }
 
     private String truncateStandardValue(Integer key, String value) {

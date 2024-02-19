@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scanDefinitions>
+    <version date="20190512" release="0.1"/>
+    <rules>
+        <standardElements>
+            <rule tag="00080012"  pattern="^2009[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 2009mmdd found"/>
+            <rule tag="00080012" pattern="^201\d[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 201xmmdd found"/>
+            <rule tag="00080020"  pattern="^2009[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 2009mmdd found"/>
+            <rule tag="00080020" pattern="^201\d[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 201xmmdd found"/>
+            <rule tag="00080021"  pattern="^2009[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 2009mmdd found"/>
+            <rule tag="00080021" pattern="^201\d[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 201xmmdd found"/>
+            <rule tag="00080022"  pattern="^2009[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 2009mmdd found"/>
+            <rule tag="00080022" pattern="^201\d[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 201xmmdd found"/>
+            <rule tag="00080023"  pattern="^2009[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 2009mmdd found"/>
+            <rule tag="00080023" pattern="^201\d[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 201xmmdd found"/>
+            <rule tag="00081012"  pattern="^2009[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 2009mmdd found"/>
+            <rule tag="00081012" pattern="^201\d[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 201xmmdd found"/>
+            <rule tag="00181012" pattern="^201\d[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 201xmmdd found"/>
+            <rule tag="00400244" pattern="^201\d[0-9][0-9][0-9][0-9]$" action="replace" replace="Date 201xmmdd found"/>
+            
+            <!-- 0018, 1014 Time of Secondary Capture -->
+            <rule tag="00181014" pattern="^[0-2]\d[0-5]\d[0-5]\d\.\d\d\d\d\d\d$" action="replace" replace="Time hhmmss.xxxxxx found"/>
+            
+            <!-- 0018, 1316 SAR -->
+            <rule tag="00181316" pattern="^0.\d\d\d\d\d\d\d\d\d\d\d*$" action="replace" replace="Float 0.ddddddddddd* found"/>
+            
+            <!-- 0020, 0012 Acquisition Number -->
+            <rule tag="00200012" pattern="^\d\d$" action="replace" replace="Acquisition Number dd found"/>
+            <rule tag="00200012" pattern="^\d\d\d$" action="replace" replace="Acquisition Number ddd found"/>
+            
+            <!-- 0020, 4000 Image Comments -->
+            <rule tag="00204000" pattern="^Motion: (-?\d\.\d\d)6$" action="replace" replace="Motion followed by 6 floats found"/>
+            
+            <!-- 0040,0245 Performed Procedure Start Time -->
+            <rule tag="00400244" pattern="^[0-2]\d[0-5]\d[0-5]\d\.\d\d\d\d\d\d$" action="replace" replace="Time hhmmss.xxxxxx found"/>
+            
+            <!-- 0054, 1330 Image Index -->
+            <rule tag="00541330" pattern="^\d\d$" action="replace" replace="Image Index dd found"/>
+            <rule tag="00541330" pattern="^\d\d\d$" action="replace" replace="Image Index ddd found"/>
+            
+            <rule vr="DT"        pattern="^201\d[0-1][0-9][0-3][0-9]\d\d\d\d\d\d$" action="replace" replace="DateTime 201xmmddssss found" />
+        </standardElements>
+        
+        <privateElements> </privateElements>
+    </rules>
+    
+    
+</scanDefinitions>

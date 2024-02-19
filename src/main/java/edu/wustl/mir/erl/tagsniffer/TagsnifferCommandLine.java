@@ -3,7 +3,7 @@ package edu.wustl.mir.erl.tagsniffer;
 public class TagsnifferCommandLine {
     public static void main(String[] args) {
         try {
-            TagExtractor folderScanner = new TagExtractor(args[0]);
+            TagExtractor folderScanner = new TagExtractor(args[0], args[1], args[2]);
             TagReporter reporter = new TagReporter(folderScanner, args[1]);
             folderScanner.scan();
             reporter.report();
@@ -16,7 +16,7 @@ public class TagsnifferCommandLine {
     }
     public static void usage(String[] args) {
         if (args.length != 2) {
-            System.out.println("Usage: <input folder> <output folder>");
+            System.out.println("Usage: <input folder> <output folder> [scan_rules.xml]");
             System.exit(1);
         }
     }
